@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>上海汇勒知识图谱</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f1117; font-family: "PingFang SC", "Microsoft YaHei", Arial, sans-serif; overflow: hidden; }
+    svg { width: 100vw; height: 100vh; display: block; }
+    #panel {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(15,17,23,0.98);
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding: 20px 24px 32px;
+      transform: translateY(100%);
+      transition: transform 0.2s ease;
+      z-index: 100; max-height: 50vh; overflow-y: auto;
+    }
+    #panel.show { transform: translateY(0); }
+    #panel .close { float: right; color: #555; font-size: 22px; cursor: pointer; line-height: 1; }
+    #panel h3 { font-size: 18px; color: #f1f5f9; margin-bottom: 4px; }
+    #panel .type { font-size: 11px; color: #6b7280; margin-bottom: 12px; text-transform: uppercase; }
+    #panel .summary { font-size: 13px; color: #9ca3af; line-height: 1.7; }
+    #panel .rels { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 11px; color: #6b7280; }
+    #panel .rels span { color: #38bdf8; }
+    #header { position: fixed; top: 0; left: 0; padding: 16px 20px 28px; background: linear-gradient(180deg, rgba(15,17,23,0.95) 0%, transparent 100%); z-index: 50; pointer-events: none; }
+    #header h1 { font-size: 15px; color: #f1f5f9; font-weight: 600; }
+    #header p { font-size: 11px; color: #6b7280; margin-top: 3px; }
+    #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #555; font-size: 14px; }
+    .node { stroke-width: 2px; cursor: pointer; }
+    line { stroke: rgba(255,255,255,0.1); stroke-width: 1; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>上海汇勒知识图谱</h1>
+  <p>点击节点查看详情 · 拖拽画布移动 · 滚轮缩放</p>
+</div>
+
+<div id="loading">加载中...</div>
+<svg id="svg"></svg>
+
+<div id="panel">
+  <div class="close" onclick="document.getElementById('panel').classList.remove('show')">✕</div>
+  <h3 id="p-title"></h3>
+  <div class="type" id="p-type"></div>
+  <div class="summary" id="p-summary"></div>
+  <div class="rels" id="p-rels"></div>
+</div>
+
+<script src="d3.min.js"></script>
+<script>
+var COLORS = {
+  company:"#f97316",product:"#3b82f6",department:"#22c55e",
+  industry:"#a855f7",competitor:"#ef4444",tech:"#06b6d4",
+  process:"#eab308",metric:"#ec4899",category:"#f97316",knowledge:"#6b7280"
+};
+var TYPE_NAMES = {
+  company:"公司/品牌",product:"产品",department:"部门",industry:"行业",
+  competitor:"竞品",tech:"技术",process:"流程",metric:"指标",category:"分类",knowledge:"知识库"
+};
+
+var DATA_ENTITIES = [{"name": "上海汇勒", "type": "company", "summary": "建筑电气集成管控领军者，「光·能·控·安」四维守护。核心能力：硬件自主研发+软件平台+闭环生态系统。"}, {"name": "汇勒", "type": "company", "summary": "暂无详细信息"}, {"name": "智能照明", "type": "product", "summary": "按需调光、场景控制、节能管理。应用场景：商业地产、住宅、写字楼、购物中心。支持BACnet/Modbus/KNX协议。"}, {"name": "能耗监控", "type": "product", "summary": "实时采集、数据分析、异常预警。核心价值：节能率提升15-30%，ROI 2-4年。应用于工业、医疗、教育、商业地产。"}, {"name": "楼宇自控", "type": "product", "summary": "集中管理、策略联动、远程运维。支持HVAC/照明/窗帘/安防联动。技术基础：IoT物联网+云计算+边缘计算。"}, {"name": "安全用电", "type": "product", "summary": "漏电监测、温度监测、故障诊断。核心价值：预防电气火灾、保障设备安全。应用于工业厂房、医疗设施。"}, {"name": "智慧管控平台", "type": "product", "summary": "实时监控/能耗分析/设备诊断/策略编辑。四屏联动：Web+APP+微信+大屏。"}, {"name": "商业地产", "type": "industry", "summary": "核心场景：写字楼、购物中心、酒店。需求：BA集中控制+能源管理+智慧物业平台。"}, {"name": "住宅", "type": "industry", "summary": "核心场景：高端住宅小区、智慧社区。需求：智慧照明+能耗管理+物业联动。"}, {"name": "工业", "type": "industry", "summary": "核心场景：厂房、仓库、园区。需求：配电监控+节能优化+设备预测性维护。"}, {"name": "公共建筑", "type": "industry", "summary": "核心场景：体育馆、博物馆、机场。需求：BA系统+节能优化+智慧运营。"}, {"name": "基础设施", "type": "industry", "summary": "暂无详细信息"}, {"name": "医疗", "type": "industry", "summary": "核心场景：医院、手术室、医疗气体。特殊需求：用电可靠性99.99%，关键负荷0中断。"}, {"name": "教育", "type": "industry", "summary": "核心场景：智慧教室、校园平台、宿舍管理。需求：照明控制+能耗管理+智能考勤。"}, {"name": "霍尼韦尔", "type": "competitor", "summary": "国际大厂，价格高，品牌大。劣势：决策链长、售后响应慢、本地定制弱。切入：性价比+快速响应。"}, {"name": "西门子", "type": "competitor", "summary": "技术领先、产品稳定。劣势：体系庞大复杂、项目周期长、价格高。切入：灵活性+定制化。"}, {"name": "海康威视", "type": "competitor", "summary": "安防领域强、渠道广、价格适中。劣势：电气非核心、平台深度不够。切入：专注电气+平台深度。"}, {"name": "物联网", "type": "tech", "summary": "暂无详细信息"}, {"name": "BACnet", "type": "tech", "summary": "楼宇自控国际标准协议，ISO 16484-5。用于暖通空调、照明系统互联互通。"}, {"name": "Modbus", "type": "tech", "summary": "工业通信协议，RS485/TCP两种介质。适用于能耗监控、传感器数据采集。"}, {"name": "KNX", "type": "tech", "summary": "智能建筑国际标准，KNX协会认证。用于照明控制、窗帘、安防联动。"}, {"name": "数字孪生", "type": "tech", "summary": "建筑虚拟镜像，实现预演式运维；设备故障预测性维护。"}, {"name": "边缘计算", "type": "tech", "summary": "本地化数据处理，减少云端依赖；响应速度<100ms。"}, {"name": "5G", "type": "tech", "summary": "暂无详细信息"}, {"name": "销售流程", "type": "process", "summary": "六阶段：项目信息→需求对接→投标准备→投标执行→合同签订→移交实施。核心指标：中标率、回款率。"}, {"name": "项目交付", "type": "process", "summary": "八阶段：合同签订→项目立项→深化设计→硬件生产/采购→安装调试→软件部署→系统联调→验收培训→售后运维。"}, {"name": "方案制定", "type": "process", "summary": "关键节点：需求确认→方案设计→技术参数→预算报价→投标文件→合同谈判。售前部主导。"}, {"name": "商务报价", "type": "process", "summary": "报价构成：硬件成本+软件授权+实施服务+质保金。毛利参考：35-50%。"}, {"name": "合同签订", "type": "process", "summary": "付款节点：预付款(20-30%)+到货款(30-40%)+验收款(20-30%)+质保金(5-10%)。"}, {"name": "节能率", "type": "metric", "summary": "能耗监控系统核心价值指标；行业标杆：15-30%节能率。"}, {"name": "ROI", "type": "metric", "summary": "投资回报周期；智能照明ROI 2-3年，能耗监控ROI 2-4年。"}, {"name": "中标率", "type": "metric", "summary": "销售团队核心KPI；行业参考：20-35%。"}, {"name": "回款率", "type": "metric", "summary": "财务健康度指标；项目型回款周期：3-12个月。"}, {"name": "验收通过率", "type": "metric", "summary": "交付团队KPI；行业标杆：95%以上。"}, {"name": "NPS", "type": "metric", "summary": "客户净推荐值；行业标杆：>50分为优秀。"}, {"name": "光", "type": "category", "summary": "智能照明控制系统。按需调光、场景控制、节能管理。"}, {"name": "能", "type": "category", "summary": "能耗电力监控系统。实时采集、数据分析、异常预警、节能优化。"}, {"name": "控", "type": "category", "summary": "楼宇自控系统。集中管理、策略联动、远程运维。"}, {"name": "安", "type": "category", "summary": "安全用电监控系统。漏电监测、温度监测、故障诊断、电气火灾预警。"}, {"name": "销售部", "type": "department", "summary": "核心指标：新签约合同额、回款率、中标率、重点项目覆盖率。"}, {"name": "财务部", "type": "department", "summary": "核心指标：应收账款周转天数、经营现金流、毛利率。"}, {"name": "行政部", "type": "department", "summary": "暂无详细信息"}, {"name": "采购部", "type": "department", "summary": "暂无详细信息"}, {"name": "需求确认", "type": "process", "summary": "暂无详细信息"}];
+var DATA_RELATIONS = [{"source": "销售流程", "target": "线索获取", "relation": "contains"}, {"source": "线索获取", "target": "销售流程", "relation": "part_of"}, {"source": "销售流程", "target": "现场勘查", "relation": "contains"}, {"source": "现场勘查", "target": "销售流程", "relation": "part_of"}, {"source": "销售流程", "target": "技术方案制定", "relation": "contains"}, {"source": "技术方案制定", "target": "销售流程", "relation": "part_of"}, {"source": "销售流程", "target": "商务报价", "relation": "contains"}, {"source": "商务报价", "target": "销售流程", "relation": "part_of"}, {"source": "销售流程", "target": "投标", "relation": "contains"}, {"source": "投标", "target": "销售流程", "relation": "part_of"}, {"source": "销售流程", "target": "合同签订", "relation": "contains"}, {"source": "合同签订", "target": "销售流程", "relation": "part_of"}, {"source": "项目交付", "target": "项目立项", "relation": "contains"}, {"source": "项目交付", "target": "深化设计", "relation": "contains"}, {"source": "项目交付", "target": "硬件生产", "relation": "contains"}, {"source": "项目交付", "target": "安装调试", "relation": "contains"}, {"source": "项目交付", "target": "软件部署", "relation": "contains"}, {"source": "项目交付", "target": "系统联调", "relation": "contains"}, {"source": "项目交付", "target": "验收培训", "relation": "contains"}, {"source": "项目交付", "target": "售后运维", "relation": "contains"}, {"source": "智能照明", "target": "光", "relation": "represents"}, {"source": "光", "target": "智能照明", "relation": "has"}, {"source": "能耗监控", "target": "能", "relation": "represents"}, {"source": "能", "target": "能耗监控", "relation": "has"}, {"source": "楼宇自控", "target": "控", "relation": "represents"}, {"source": "控", "target": "楼宇自控", "relation": "has"}, {"source": "安全用电", "target": "安", "relation": "represents"}, {"source": "安", "target": "安全用电", "relation": "has"}, {"source": "上海汇勒", "target": "智能照明", "relation": "provides"}, {"source": "上海汇勒", "target": "能耗监控", "relation": "provides"}, {"source": "上海汇勒", "target": "楼宇自控", "relation": "provides"}, {"source": "上海汇勒", "target": "安全用电", "relation": "provides"}, {"source": "上海汇勒", "target": "霍尼韦尔", "relation": "competitor"}, {"source": "上海汇勒", "target": "西门子", "relation": "competitor"}, {"source": "上海汇勒", "target": "海康威视", "relation": "competitor"}, {"source": "智能照明", "target": "商业地产", "relation": "applied_to"}, {"source": "能耗监控", "target": "商业地产", "relation": "applied_to"}, {"source": "楼宇自控", "target": "商业地产", "relation": "applied_to"}, {"source": "安全用电", "target": "商业地产", "relation": "applied_to"}, {"source": "智能照明", "target": "医疗", "relation": "applied_to"}, {"source": "能耗监控", "target": "医疗", "relation": "applied_to"}, {"source": "楼宇自控", "target": "医疗", "relation": "applied_to"}, {"source": "安全用电", "target": "医疗", "relation": "applied_to"}, {"source": "智能照明", "target": "教育", "relation": "applied_to"}, {"source": "能耗监控", "target": "教育", "relation": "applied_to"}, {"source": "楼宇自控", "target": "教育", "relation": "applied_to"}, {"source": "安全用电", "target": "教育", "relation": "applied_to"}, {"source": "智能照明", "target": "工业", "relation": "applied_to"}, {"source": "能耗监控", "target": "工业", "relation": "applied_to"}, {"source": "楼宇自控", "target": "工业", "relation": "applied_to"}, {"source": "安全用电", "target": "工业", "relation": "applied_to"}, {"source": "智能照明", "target": "公共建筑", "relation": "applied_to"}, {"source": "能耗监控", "target": "公共建筑", "relation": "applied_to"}, {"source": "楼宇自控", "target": "公共建筑", "relation": "applied_to"}, {"source": "安全用电", "target": "公共建筑", "relation": "applied_to"}, {"source": "智能照明", "target": "住宅", "relation": "applied_to"}, {"source": "能耗监控", "target": "住宅", "relation": "applied_to"}, {"source": "楼宇自控", "target": "住宅", "relation": "applied_to"}, {"source": "安全用电", "target": "住宅", "relation": "applied_to"}, {"source": "能耗监控", "target": "节能率", "relation": "improves"}, {"source": "销售流程", "target": "节能率", "relation": "measures"}, {"source": "能耗监控", "target": "ROI", "relation": "improves"}, {"source": "销售流程", "target": "ROI", "relation": "measures"}, {"source": "能耗监控", "target": "中标率", "relation": "improves"}, {"source": "销售流程", "target": "中标率", "relation": "measures"}, {"source": "能耗监控", "target": "回款率", "relation": "improves"}, {"source": "销售流程", "target": "回款率", "relation": "measures"}, {"source": "销售流程", "target": "需求确认", "relation": "contains"}, {"source": "需求确认", "target": "销售流程", "relation": "part_of"}];
+
+var nodeMap = {};
+DATA_ENTITIES.forEach(function(e) { nodeMap[e.name] = e; });
+
+var links = DATA_RELATIONS
+  .filter(function(r) { return nodeMap[r.source] && nodeMap[r.target]; })
+  .map(function(r) { return { source: r.source, target: r.target, relation: r.relation }; });
+
+var svg = d3.select("#svg");
+var W = window.innerWidth, H = window.innerHeight;
+svg.attr("viewBox", "0 0 " + W + " " + H);
+
+var g = svg.append("g");
+svg.call(d3.zoom().scaleExtent([0.1, 4]).on("zoom", function(e) { g.attr("transform", e.transform); }));
+
+g.append("g").selectAll("line").data(links).join("line");
+
+var node = g.append("g").selectAll("circle").data(DATA_ENTITIES).join("circle")
+  .attr("class", "node")
+  .attr("r", function(d) { return d.type==="company"?14:d.type==="metric"?9:11; })
+  .attr("fill", function(d) { return COLORS[d.type]||"#6b7280"; })
+  .attr("stroke", "#0f1117")
+  .call(d3.drag()
+    .on("start", function(e,d) {
+      if (!e.active) sim.alphaTarget(0.3).restart();
+      d.fx = d.x; d.fy = d.y;
+    })
+    .on("drag", function(e,d) { d.fx = e.x; d.fy = e.y; })
+    .on("end", function(e,d) {
+      if (!e.active) sim.alphaTarget(0);
+      d.fx = null; d.fy = null;
+    }))
+  .on("click", function(event, d) {
+    document.getElementById("panel").classList.add("show");
+    document.getElementById("p-title").textContent = d.name;
+    document.getElementById("p-type").textContent = TYPE_NAMES[d.type] || d.type;
+    document.getElementById("p-summary").textContent = d.summary || "暂无详细信息";
+    var rels = links
+      .filter(function(l) { return l.source.name===d.name || l.target.name===d.name; })
+      .map(function(l) {
+        var o = l.source.name===d.name ? l.target.name : l.source.name;
+        var dir = l.source.name===d.name ? "→" : "←";
+        return "<span>" + dir + "</span> " + o + " (" + l.relation + ")";
+      }).slice(0, 8);
+    document.getElementById("p-rels").innerHTML = rels.length ? "关联：" + rels.join(" · ") : "无直接关联";
+    event.stopPropagation();
+  });
+
+g.append("g").selectAll("text").data(DATA_ENTITIES).join("text")
+  .text(function(d) { return d.name; })
+  .attr("font-size", function(d) { return d.type==="company"?"11px":"9px"; })
+  .attr("fill", "#9ca3af")
+  .attr("text-anchor", "middle")
+  .attr("dy", function(d) { return d.type==="company"?25:20; })
+  .attr("pointer-events", "none")
+  .attr("opacity", 0.7);
+
+var sim = d3.forceSimulation(DATA_ENTITIES)
+  .force("link", d3.forceLink(links).id(function(d) { return d.name; }).distance(90).strength(0.4))
+  .force("charge", d3.forceManyBody().strength(-180))
+  .force("center", d3.forceCenter(W/2, H/2))
+  .force("collision", d3.forceCollide(22))
+  .on("tick", function() {
+    g.selectAll("line")
+      .attr("x1", function(d) { return d.source.x; }).attr("y1", function(d) { return d.source.y; })
+      .attr("x2", function(d) { return d.target.x; }).attr("y2", function(d) { return d.target.y; });
+    g.selectAll("circle")
+      .attr("cx", function(d) { return d.x; }).attr("cy", function(d) { return d.y; });
+    g.selectAll("text")
+      .attr("x", function(d) { return d.x; }).attr("y", function(d) { return d.y; });
+  });
+
+document.addEventListener("click", function(e) {
+  if (!e.target.closest("#panel") && !e.target.closest("circle")) {
+    document.getElementById("panel").classList.remove("show");
+  }
+});
+
+document.getElementById("loading").style.display = "none";
+</script>
+</body>
+</html>
